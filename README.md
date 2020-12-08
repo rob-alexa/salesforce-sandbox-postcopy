@@ -1,5 +1,5 @@
 # sandbox-postcopy
-implements Salesforce's SandboxPostCopy and Batchable interfaces to modify email addresses on completion of a sandbox refresh
+*implements Salesforce's SandboxPostCopy and Batchable interfaces to modify email addresses on completion of a sandbox refresh*
 
 In Salesforce's Spring '16 release, the Run Script After Sandbox Creation and Refresh feature was released. It allows developers to create an Apex class that implements the SandboxPostCopy interface and specify the class on the Sandbox Options screen (pictured in the screenshot at the top of this post).
 
@@ -10,6 +10,7 @@ I found some code published by Steve O'Neal that uses SandboxPostCopy in combina
 * changing the batch classes so the test class will work in production orgs (not just sandboxes)
 * adding the group object (type = 'queue')
 * making the modified contact/lead/queue email addresses to be in the same format as the user email addresses
+
 
 <a href="https://githubsfdeploy.herokuapp.com">
   <img alt="Deploy to Salesforce"
