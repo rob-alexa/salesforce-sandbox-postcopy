@@ -1,7 +1,7 @@
 public class BatchModifySandboxGroupEmails implements Database.Batchable<sObject>{
     Public Database.QueryLocator start(Database.BatchableContext BC){
         //exclude all groups without email and emails that are already modified
-        String query = 'select Id,Email from Group where Email != null AND (NOT Email LIKE \'%@example.com\')';
+        String query = 'select Id,Email from Group where Email != null AND (NOT Email LIKE \'%.invalid\')';
         //return results to process only if the current instance is a sandbox or a test is running
         Boolean sandbox;
         for(Organization o:[Select isSandbox from Organization limit 1]){
@@ -21,7 +21,7 @@ public class BatchModifySandboxGroupEmails implements Database.Batchable<sObject
         List<Group> ListToUpdate = new List<Group>();
         if(scope!=null){
             for(Group g: listGroup){
-                g.Email = g.Email.replace('@', '=') + '@example.com';
+                g.Email = g.Email + '.invalid';
                 ListToUpdate.add(g);                    
             }
         }
