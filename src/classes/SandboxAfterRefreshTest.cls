@@ -23,8 +23,8 @@ class SandboxAfterRefreshTest {
         Lead l = [Select email from Lead limit 1];
         Group q = [Select email from Group where DeveloperName = 'Testing_Queue' limit 1];
         
-        System.assert(c.Email.endsWith('@example.com'));
-        System.assert(l.Email.endsWith('@example.com'));
-        System.assert(q.Email.endsWith('@example.com'));
+        System.assert(c.Email.endsWith('.invalid'));
+        System.assert(l.Email.endsWith('.invalid'));
+        System.assert(q.Email.endsWith('.invalid'));
 	}
 }
