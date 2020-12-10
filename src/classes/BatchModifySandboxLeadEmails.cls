@@ -1,7 +1,7 @@
 public class BatchModifySandboxLeadEmails implements Database.Batchable<sObject>{
     Public Database.QueryLocator start(Database.BatchableContext BC){
         //exclude all leads without email and emails that are already modified
-        String query = 'select Id,Email from Lead where Email != null AND IsConverted = false AND (NOT Email LIKE \'%@example.com\')';
+        String query = 'select Id,Email from Lead where Email != null AND IsConverted = false AND (NOT Email LIKE \'%.invalid\')';
         //return results to process only if the current instance is a sandbox or a test is running
         Boolean sandbox;
         for(Organization o:[Select isSandbox from Organization limit 1]){
@@ -21,7 +21,7 @@ public class BatchModifySandboxLeadEmails implements Database.Batchable<sObject>
         List<Lead> ListToUpdate = new List<Lead>();
         if(scope!=null){
             for(Lead l: listLead){
-                l.Email = l.Email.replace('@', '=') + '@example.com';
+                l.Email = l.Email + '.invalidm';
                 ListToUpdate.add(l);
             }
         }
