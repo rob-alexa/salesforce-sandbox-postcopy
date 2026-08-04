@@ -74,7 +74,7 @@ public without sharing class SandboxEmailScrubberBatch implements Database.Batch
         if (toUpdate.isEmpty()) {
             return;
         }
-        for (Database.SaveResult result : Database.update(toUpdate, false, AccessLevel.SYSTEM_MODE)) {
+        for (Database.SaveResult result : Database.update(toUpdate, false)) {
             if (result.isSuccess()) {
                 updated++;
             } else {

@@ -81,13 +81,33 @@ Scrubbing addresses is one layer. The stronger control is org level: in the sand
 
 ## Continuous integration
 
-Two jobs run on every pull request, in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+Two jobs run on every pull request, in [`.github/workflows/ci.yml`](.github/workflows/ci.yml). **Neither needs an org, a credential, or a repository secret**, so both run on pull requests from forks.
 
-**Code Analyzer** runs the `Recommended` rules over the Apex and fails on a Critical or High finding. It needs no org and no secrets, so it runs on pull requests from forks too. Findings are uploaded as a build artifact and, where code scanning is on, as SARIF.
+**Apex type check** runs [`apexlink`](https://github.com/apex-dev-tools/apex-ls), which resolves every type and member reference offline. This is the job that catches a compile error, and it is the reason the repository could not break the way it did in 2020: run against that code it reports exactly the offending line.
 
-**Apex compile and tests** authenticates to an org and runs a check only deploy with the test class. Nothing is saved to the org. This is the job that matters, because **Code Analyzer cannot catch a compile error**: PMD parses Apex without type checking it, so a broken expression passes straight through. Apex is only type checked server side, which is why an org is needed to know the code builds at all.
+```
+BatchModifySandboxContactEmails.cls
+  line 24: Unknown field or type 'replace' on 'System.String'
+```
 
-To switch that job on, add a repository secret named `SF_AUTH_URL` holding an SFDX auth URL (`sf org display --verbose --target-org <alias>`, then copy the **Sfdx Auth Url** value). Point it at a **free Developer Edition org kept for this repository**, never at an org holding real data: a repository secret is available to any workflow on the default branch. Without the secret the job reports that it was skipped and the build stays green.
+**Code Analyzer** runs the `Recommended` rules and fails on a Critical or High finding. It covers style, security patterns, and stale API versions. It does **not** cover whether the code compiles, and cannot: PMD parses Apex without type checking it, so a broken expression reads as an ordinary property access. Run against the 2020 code it reported 72 findings and not one of them on the broken line.
+
+### One constraint the type check imposes
+
+The `apexlink` plugin was last published in June 2022, so its knowledge of the platform stops there. Two standard types that compile perfectly well are reported as unknown:
+
+| Type | Shipped in | Use instead |
+| --- | --- | --- |
+| `System.Assert` | API 57, Spring '23 | `System.assertEquals`, `System.assert` |
+| `System.AccessLevel` | API 55, Summer '22 | Omit it, or use the two argument `Database.update` |
+
+The Apex here deliberately avoids both, so the job reports zero. If you reach for a newer platform type, expect a false error from this job. Do not work around it by weakening the check: either keep to what it understands, or replace the job with a check only deploy against an org, which needs a credential in a repository secret.
+
+Note what neither job does: **run the tests.** They are type checked but not executed in CI. Run them yourself against an org before merging anything substantial:
+
+```bash
+sf project deploy start --source-dir force-app --dry-run --test-level RunSpecifiedTests --tests SandboxEmailScrubberTest --target-org <your-org>
+```
 
 ## History
 
@@ -104,4 +124,4 @@ Rewritten 8/3/2026. What changed:
 - **Moved to Salesforce DX source format** and API version **67.0**, from the `src` metadata layout at API 38.0.
 - **Added the CI described above**, along with 16 tests including a 200 record bulk case.
 
-Verified 8/3/2026 by a check only deploy against a sandbox: 4 components, 16 tests, 0 failures, 96% coverage.
+Verified 8/3/2026 by a check only deploy against a sandbox: 4 components, 16 tests, 0 failures, 151 of 157 lines covered.

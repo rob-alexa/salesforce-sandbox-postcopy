@@ -14,6 +14,58 @@ concurrency:
     cancel-in-progress: true
 
 jobs:
+    typecheck:
+        name: Apex type check
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: lts/*
+
+            # Pinned on purpose. The plugin was last published in June 2022, so a floating version
+            # is not going to bring improvements but could change behavior without warning. The
+            # piped "y" answers its third-party plugin prompt, which has no flag to skip.
+            - name: Install Salesforce CLI and apexlink
+              run: |
+                  npm install --global @salesforce/cli
+                  echo y | sf plugins install apexlink@2.3.5
+
+            # apexlink resolves every type and member reference offline, with no org and no
+            # credentials. This is the job that catches a compile error. Code Analyzer cannot:
+            # PMD parses Apex without type checking it, so a broken expression reads as an
+            # ordinary property access and passes straight through.
+            #
+            # apexlink exits 0 whatever it finds, so the message count is the gate.
+            #
+            # It knows the platform types as of mid 2022, which means System.Assert and
+            # System.AccessLevel are reported as unknown even though both compile. The Apex here
+            # deliberately avoids them. If you reach for a platform type newer than that, expect a
+            # false error from this job and read the README before working around it.
+            - name: Type check Apex
+              run: |
+                  sf apexlink check --json > apexlink-results.json
+                  count=$(jq '[.result.files[]?.messages[]?] | length' apexlink-results.json)
+                  jq -r --arg root "${GITHUB_WORKSPACE}/" '
+                    .result.files[]?
+                    | (.path | sub("^" + $root; "")) as $file
+                    | .messages[]?
+                    | "::error file=\($file),line=\(.start.line)::\(.category): \(.message)"
+                  ' apexlink-results.json
+                  if [ "${count}" -gt 0 ]; then
+                    echo "apexlink found ${count} unresolved reference(s)."
+                    exit 1
+                  fi
+                  echo "apexlink: no unresolved references."
+
+            - name: Upload results
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: apexlink-results
+                  path: apexlink-results.json
+
     analyze:
         name: Code Analyzer
         runs-on: ubuntu-latest
@@ -33,8 +85,8 @@ jobs:
                   sf plugins install code-analyzer
 
             # Fails on a Critical or High finding. Moderate and below are reported but do not
-            # block. Note what this job cannot do: PMD parses Apex without type checking it, so a
-            # compile error passes straight through here. The apex-tests job is what catches those.
+            # block. This job covers style, security patterns, and stale API versions. It does not
+            # and cannot cover whether the code compiles: that is the typecheck job.
             - name: Run Code Analyzer
               run: |
                   sf code-analyzer run \
@@ -59,53 +111,3 @@ jobs:
               uses: github/codeql-action/upload-sarif@v3
               with:
                   sarif_file: code-analyzer-results.sarif
-
-    apex-tests:
-        name: Apex compile and tests
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v4
-
-            - uses: actions/setup-node@v4
-              with:
-                  node-version: lts/*
-
-            # A pull request from a fork never receives secrets, so this job reports that it was
-            # skipped rather than failing on an empty credential.
-            - name: Check for org credentials
-              id: creds
-              env:
-                  SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
-              run: |
-                  if [ -z "${SF_AUTH_URL}" ]; then
-                    echo "present=false" >> "$GITHUB_OUTPUT"
-                    echo "::notice title=Apex tests skipped::SF_AUTH_URL is not set on this repository, so the Apex compile and test run did not happen. See the README."
-                  else
-                    echo "present=true" >> "$GITHUB_OUTPUT"
-                  fi
-
-            - name: Install Salesforce CLI
-              if: steps.creds.outputs.present == 'true'
-              run: npm install --global @salesforce/cli
-
-            - name: Authenticate
-              if: steps.creds.outputs.present == 'true'
-              env:
-                  SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
-              run: |
-                  printf '%s' "${SF_AUTH_URL}" > "${RUNNER_TEMP}/auth.txt"
-                  sf org login sfdx-url --sfdx-url-file "${RUNNER_TEMP}/auth.txt" --alias ci --set-default
-                  rm -f "${RUNNER_TEMP}/auth.txt"
-
-            # Nothing is saved to the org. --dry-run compiles every class and runs every test, then
-            # throws the deployment away. This is the only check that can catch an Apex compile
-            # error, because Apex is only type checked server side.
-            - name: Validate and run tests
-              if: steps.creds.outputs.present == 'true'
-              run: |
-                  sf project deploy start \
-                    --source-dir force-app \
-                    --dry-run \
-                    --test-level RunSpecifiedTests \
-                    --tests SandboxEmailScrubberTest \
-                    --wait 30

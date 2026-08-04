@@ -153,21 +153,15 @@ public without sharing class SandboxEmailScrubber {
             ' FROM ' +
             target.objectApiName +
             ' WHERE Id IN :recordIds';
-        List<SObject> found = Database.queryWithBinds(
-            soql,
-            new Map<String, Object>{ 'recordIds' => recordIds },
-            AccessLevel.SYSTEM_MODE
-        );
-
         List<SObject> toUpdate = new List<SObject>();
-        for (SObject record : found) {
+        for (SObject record : Database.query(soql)) {
             if (stripSuffix(record, target)) {
                 toUpdate.add(record);
             }
         }
         return toUpdate.isEmpty()
             ? new List<Database.SaveResult>()
-            : Database.update(toUpdate, false, AccessLevel.SYSTEM_MODE);
+            : Database.update(toUpdate, false);
     }
 
     /**
