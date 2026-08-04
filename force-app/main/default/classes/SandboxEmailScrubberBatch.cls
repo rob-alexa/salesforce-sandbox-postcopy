@@ -74,6 +74,11 @@ public without sharing class SandboxEmailScrubberBatch implements Database.Batch
         if (toUpdate.isEmpty()) {
             return;
         }
+        // Deliberately not AccessLevel.SYSTEM_MODE. It would be redundant, since this class is
+        // declared without sharing and a batch already runs in system context, and it suppresses
+        // the field accessibility check. That check earns its keep: it caught a test handing this
+        // method a scope record still carrying Group.Type, which is not updateable and which the
+        // query locator never selects.
         for (Database.SaveResult result : Database.update(toUpdate, false)) {
             if (result.isSuccess()) {
                 updated++;

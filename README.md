@@ -79,35 +79,15 @@ SandboxEmailScrubber.restore('Contact', new Set<Id>{ '003xx0000000001AAA' });
 
 Scrubbing addresses is one layer. The stronger control is org level: in the sandbox, set Setup > Email > Deliverability > **Access level** to **System email only**, which stops the org sending to anyone at all. Use both. A refresh resets deliverability, and this script does not set it.
 
-## Continuous integration
+## Running the tests
 
-Two jobs run on every pull request, in [`.github/workflows/ci.yml`](.github/workflows/ci.yml). **Neither needs an org, a credential, or a repository secret**, so both run on pull requests from forks.
-
-**Apex type check** runs [`apexlink`](https://github.com/apex-dev-tools/apex-ls), which resolves every type and member reference offline. This is the job that catches a compile error, and it is the reason the repository could not break the way it did in 2020: run against that code it reports exactly the offending line.
-
-```
-BatchModifySandboxContactEmails.cls
-  line 24: Unknown field or type 'replace' on 'System.String'
-```
-
-**Code Analyzer** runs the `Recommended` rules and fails on a Critical or High finding. It covers style, security patterns, and stale API versions. It does **not** cover whether the code compiles, and cannot: PMD parses Apex without type checking it, so a broken expression reads as an ordinary property access. Run against the 2020 code it reported 72 findings and not one of them on the broken line.
-
-### One constraint the type check imposes
-
-The `apexlink` plugin was last published in June 2022, so its knowledge of the platform stops there. Two standard types that compile perfectly well are reported as unknown:
-
-| Type | Shipped in | Use instead |
-| --- | --- | --- |
-| `System.Assert` | API 57, Spring '23 | `System.assertEquals`, `System.assert` |
-| `System.AccessLevel` | API 55, Summer '22 | Omit it, or use the two argument `Database.update` |
-
-The Apex here deliberately avoids both, so the job reports zero. If you reach for a newer platform type, expect a false error from this job. Do not work around it by weakening the check: either keep to what it understands, or replace the job with a check only deploy against an org, which needs a credential in a repository secret.
-
-Note what neither job does: **run the tests.** They are type checked but not executed in CI. Run them yourself against an org before merging anything substantial:
+Apex is type checked only on a Salesforce server, so proving a change compiles means asking an org. This runs the tests and saves nothing:
 
 ```bash
 sf project deploy start --source-dir force-app --dry-run --test-level RunSpecifiedTests --tests SandboxEmailScrubberTest --target-org <your-org>
 ```
+
+Worth knowing if you change the class: **a green result from a static analyzer is not evidence this compiles.** Salesforce Code Analyzer reported 72 findings on the version of this package that had a compile error in it, and not one of them on the offending line, because PMD parses Apex without type checking it. Run the command above.
 
 ## History
 
@@ -122,6 +102,6 @@ Rewritten 8/3/2026. What changed:
 - **Dropped the production workaround.** The old classes appended `limit 0` or `limit 1` to their query text based on `Test.isRunningTest()` so that the tests would pass in production. The guard is now a single injectable check, and the query text is the same everywhere.
 - **Added `restore`, idempotency, field length trimming, and partial success reporting.**
 - **Moved to Salesforce DX source format** and API version **67.0**, from the `src` metadata layout at API 38.0.
-- **Added the CI described above**, along with 16 tests including a 200 record bulk case.
+- **Added 16 tests**, including a 200 record bulk case, replacing the single test that could not pass.
 
 Verified 8/3/2026 by a check only deploy against a sandbox: 4 components, 16 tests, 0 failures, 151 of 157 lines covered.
