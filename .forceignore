@@ -1,0 +1,6 @@
+# Never deploy or retrieve these
+**/.sf
+**/.sfdx
+**/jsconfig.json
+**/.eslintrc.json
+**/__tests__/**

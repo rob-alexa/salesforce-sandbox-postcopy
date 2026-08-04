@@ -1,0 +1,111 @@
+name: ci
+
+on:
+    push:
+        branches: [master]
+    pull_request:
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+concurrency:
+    group: ci-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    analyze:
+        name: Code Analyzer
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            security-events: write
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: lts/*
+
+            - name: Install Salesforce CLI and Code Analyzer
+              run: |
+                  npm install --global @salesforce/cli
+                  sf plugins install code-analyzer
+
+            # Fails on a Critical or High finding. Moderate and below are reported but do not
+            # block. Note what this job cannot do: PMD parses Apex without type checking it, so a
+            # compile error passes straight through here. The apex-tests job is what catches those.
+            - name: Run Code Analyzer
+              run: |
+                  sf code-analyzer run \
+                    --workspace force-app \
+                    --rule-selector Recommended \
+                    --severity-threshold 2 \
+                    --output-file code-analyzer-results.html \
+                    --output-file code-analyzer-results.json \
+                    --output-file code-analyzer-results.sarif
+
+            - name: Upload results
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: code-analyzer-results
+                  path: code-analyzer-results.*
+
+            # Free on a public repository. Harmless if code scanning is switched off.
+            - name: Send findings to code scanning
+              if: always()
+              continue-on-error: true
+              uses: github/codeql-action/upload-sarif@v3
+              with:
+                  sarif_file: code-analyzer-results.sarif
+
+    apex-tests:
+        name: Apex compile and tests
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: lts/*
+
+            # A pull request from a fork never receives secrets, so this job reports that it was
+            # skipped rather than failing on an empty credential.
+            - name: Check for org credentials
+              id: creds
+              env:
+                  SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+              run: |
+                  if [ -z "${SF_AUTH_URL}" ]; then
+                    echo "present=false" >> "$GITHUB_OUTPUT"
+                    echo "::notice title=Apex tests skipped::SF_AUTH_URL is not set on this repository, so the Apex compile and test run did not happen. See the README."
+                  else
+                    echo "present=true" >> "$GITHUB_OUTPUT"
+                  fi
+
+            - name: Install Salesforce CLI
+              if: steps.creds.outputs.present == 'true'
+              run: npm install --global @salesforce/cli
+
+            - name: Authenticate
+              if: steps.creds.outputs.present == 'true'
+              env:
+                  SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+              run: |
+                  printf '%s' "${SF_AUTH_URL}" > "${RUNNER_TEMP}/auth.txt"
+                  sf org login sfdx-url --sfdx-url-file "${RUNNER_TEMP}/auth.txt" --alias ci --set-default
+                  rm -f "${RUNNER_TEMP}/auth.txt"
+
+            # Nothing is saved to the org. --dry-run compiles every class and runs every test, then
+            # throws the deployment away. This is the only check that can catch an Apex compile
+            # error, because Apex is only type checked server side.
+            - name: Validate and run tests
+              if: steps.creds.outputs.present == 'true'
+              run: |
+                  sf project deploy start \
+                    --source-dir force-app \
+                    --dry-run \
+                    --test-level RunSpecifiedTests \
+                    --tests SandboxEmailScrubberTest \
+                    --wait 30
