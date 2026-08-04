@@ -30,7 +30,7 @@ private class SandboxEmailScrubberTest {
         SandboxEmailScrubber.scrub('Contact');
         Test.stopTest();
 
-        System.assertEquals(SCRUBBED_EMAIL, [SELECT Email FROM Contact LIMIT 1].Email);
+        Assert.areEqual(SCRUBBED_EMAIL, [SELECT Email FROM Contact LIMIT 1].Email);
     }
 
     @IsTest
@@ -48,12 +48,12 @@ private class SandboxEmailScrubberTest {
         SandboxEmailScrubber.scrub('Lead');
         Test.stopTest();
 
-        System.assertEquals(
+        Assert.areEqual(
             200,
             [SELECT COUNT() FROM Lead WHERE Email LIKE '%.invalid'],
             'every lead in the chunk should have been scrubbed'
         );
-        System.assertEquals(
+        Assert.areEqual(
             0,
             [SELECT COUNT() FROM Lead WHERE Email != null AND (NOT Email LIKE '%.invalid')],
             'no lead should still hold a live address'
@@ -77,7 +77,7 @@ private class SandboxEmailScrubberTest {
         insert queue;
 
         SandboxEmailScrubber.Target target = SandboxEmailScrubber.describeTarget('Group');
-        System.assertNotEquals(null, target, 'Group should describe to a scrubbable target');
+        Assert.isNotNull(target, 'Group should describe to a scrubbable target');
 
         // Query the record back rather than reusing the one just inserted. The batch's own query
         // locator selects Id and the email fields only, and Group.Type is not updateable, so an
@@ -90,7 +90,7 @@ private class SandboxEmailScrubberTest {
             .execute(null, scope);
         Test.stopTest();
 
-        System.assertEquals(SCRUBBED_EMAIL, [SELECT Email FROM Group WHERE Id = :queue.Id].Email);
+        Assert.areEqual(SCRUBBED_EMAIL, [SELECT Email FROM Group WHERE Id = :queue.Id].Email);
     }
 
     @IsTest
@@ -102,7 +102,7 @@ private class SandboxEmailScrubberTest {
         SandboxEmailScrubber.scrub('Lead');
         Test.stopTest();
 
-        System.assertEquals(
+        Assert.areEqual(
             SCRUBBED_EMAIL,
             [SELECT Email FROM Lead LIMIT 1].Email,
             'a second run should not append the suffix twice'
@@ -117,16 +117,16 @@ private class SandboxEmailScrubberTest {
         Test.startTest();
         try {
             SandboxEmailScrubber.scrubAll();
-            System.assert(false, 'scrubAll should have thrown NotASandboxException');
+            Assert.fail('scrubAll should have thrown NotASandboxException');
         } catch (SandboxEmailScrubber.NotASandboxException expected) {
-            System.assert(
+            Assert.isTrue(
                 expected.getMessage().contains('not a sandbox'),
                 'the message should say why it refused: ' + expected.getMessage()
             );
         }
         Test.stopTest();
 
-        System.assertEquals(
+        Assert.areEqual(
             LIVE_EMAIL,
             [SELECT Email FROM Lead LIMIT 1].Email,
             'a refused run must leave the data alone'
@@ -146,9 +146,9 @@ private class SandboxEmailScrubberTest {
         );
         Test.stopTest();
 
-        System.assertEquals(1, results.size(), 'one record should have been restored');
-        System.assert(results[0].isSuccess(), 'the restore should have saved');
-        System.assertEquals(LIVE_EMAIL, [SELECT Email FROM Lead WHERE Id = :lead.Id].Email);
+        Assert.areEqual(1, results.size(), 'one record should have been restored');
+        Assert.isTrue(results[0].isSuccess(), 'the restore should have saved');
+        Assert.areEqual(LIVE_EMAIL, [SELECT Email FROM Lead WHERE Id = :lead.Id].Email);
     }
 
     @IsTest
@@ -164,21 +164,21 @@ private class SandboxEmailScrubberTest {
         );
         Test.stopTest();
 
-        System.assertEquals(0, results.size(), 'there was nothing to restore');
-        System.assertEquals(LIVE_EMAIL, [SELECT Email FROM Lead WHERE Id = :lead.Id].Email);
+        Assert.areEqual(0, results.size(), 'there was nothing to restore');
+        Assert.areEqual(LIVE_EMAIL, [SELECT Email FROM Lead WHERE Id = :lead.Id].Email);
     }
 
     @IsTest
     static void trimsTheAddressWhenTheSuffixWouldOverflowTheField() {
         // Contact.Email holds 80 characters. This address is 76, so the suffix would need 84.
         String longAddress = 'a'.repeat(64) + '@example.com';
-        System.assertEquals(76, longAddress.length(), 'the fixture should be 76 characters');
+        Assert.areEqual(76, longAddress.length(), 'the fixture should be 76 characters');
 
         String scrubbed = SandboxEmailScrubber.scrubbed(longAddress, 80);
 
-        System.assertEquals(80, scrubbed.length(), 'the result should fill the field exactly');
-        System.assert(scrubbed.endsWith('.invalid'), scrubbed);
-        System.assertEquals(
+        Assert.areEqual(80, scrubbed.length(), 'the result should fill the field exactly');
+        Assert.isTrue(scrubbed.endsWith('.invalid'), scrubbed);
+        Assert.areEqual(
             'a'.repeat(64) + '@example.invalid',
             scrubbed,
             'trimming the tail should leave a valid address'
@@ -187,10 +187,10 @@ private class SandboxEmailScrubberTest {
 
     @IsTest
     static void scrubbedReturnsNullWhenThereIsNothingToDo() {
-        System.assertEquals(null, SandboxEmailScrubber.scrubbed(null, 80), 'null needs no change');
-        System.assertEquals(null, SandboxEmailScrubber.scrubbed('', 80), 'blank needs no change');
-        System.assertEquals(null, SandboxEmailScrubber.scrubbed(SCRUBBED_EMAIL, 80), 'already scrubbed');
-        System.assertEquals(
+        Assert.isNull(SandboxEmailScrubber.scrubbed(null, 80), 'null needs no change');
+        Assert.isNull(SandboxEmailScrubber.scrubbed('', 80), 'blank needs no change');
+        Assert.isNull(SandboxEmailScrubber.scrubbed(SCRUBBED_EMAIL, 80), 'already scrubbed');
+        Assert.areEqual(
             SCRUBBED_EMAIL,
             SandboxEmailScrubber.scrubbed(LIVE_EMAIL, null),
             'an unknown field length should still scrub'
@@ -205,7 +205,7 @@ private class SandboxEmailScrubberTest {
     @IsTest
     static void everyAllowlistedObjectProducesValidSoql() {
         List<SandboxEmailScrubber.Target> targets = SandboxEmailScrubber.buildTargets();
-        System.assert(!targets.isEmpty(), 'the allowlist should produce at least one target');
+        Assert.isFalse(targets.isEmpty(), 'the allowlist should produce at least one target');
 
         Set<String> objectApiNames = new Set<String>();
         for (SandboxEmailScrubber.Target target : targets) {
@@ -213,14 +213,14 @@ private class SandboxEmailScrubberTest {
             // Throws if the generated SOQL is not valid, which is the point of the assertion.
             Database.getQueryLocator(SandboxEmailScrubber.buildQuery(target));
         }
-        System.assert(objectApiNames.contains('Contact'), 'Contact should be a target');
+        Assert.isTrue(objectApiNames.contains('Contact'), 'Contact should be a target');
     }
 
     @IsTest
     static void leadQueryExcludesConvertedLeads() {
         String soql = SandboxEmailScrubber.buildQuery(SandboxEmailScrubber.describeTarget('Lead'));
-        System.assert(soql.contains('IsConverted = false'), soql);
-        System.assert(soql.contains('NOT Email LIKE \'%.invalid\''), soql);
+        Assert.isTrue(soql.contains('IsConverted = false'), soql);
+        Assert.isTrue(soql.contains('NOT Email LIKE \'%.invalid\''), soql);
     }
 
     /**
@@ -234,8 +234,8 @@ private class SandboxEmailScrubberTest {
         if (target == null) {
             return; // an org without Cases has nothing to assert here
         }
-        System.assert(target.fieldApiNames.contains('SuppliedEmail'), 'SuppliedEmail is updateable');
-        System.assert(!target.fieldApiNames.contains('ContactEmail'), 'ContactEmail is read only');
+        Assert.isTrue(target.fieldApiNames.contains('SuppliedEmail'), 'SuppliedEmail is updateable');
+        Assert.isFalse(target.fieldApiNames.contains('ContactEmail'), 'ContactEmail is read only');
     }
 
     @IsTest
@@ -244,8 +244,8 @@ private class SandboxEmailScrubberTest {
 
         List<SandboxEmailScrubber.Target> targets = SandboxEmailScrubber.buildTargets();
 
-        System.assertEquals(1, targets.size(), 'the missing object should have been skipped');
-        System.assertEquals('Contact', targets[0].objectApiName);
+        Assert.areEqual(1, targets.size(), 'the missing object should have been skipped');
+        Assert.areEqual('Contact', targets[0].objectApiName);
     }
 
     @IsTest
@@ -256,7 +256,7 @@ private class SandboxEmailScrubberTest {
         Id jobId = SandboxEmailScrubber.scrub('NotAnObject__c');
         Test.stopTest();
 
-        System.assertEquals(null, jobId, 'no batch should have been queued');
+        Assert.isNull(jobId, 'no batch should have been queued');
     }
 
     /**
@@ -280,7 +280,7 @@ private class SandboxEmailScrubberTest {
         );
         Test.stopTest();
 
-        System.assertEquals(SCRUBBED_EMAIL, [SELECT Email FROM Contact LIMIT 1].Email);
+        Assert.areEqual(SCRUBBED_EMAIL, [SELECT Email FROM Contact LIMIT 1].Email);
     }
 
     @IsTest
@@ -289,7 +289,7 @@ private class SandboxEmailScrubberTest {
 
         Boolean reported = SandboxEmailScrubber.isSandbox();
 
-        System.assertEquals(
+        Assert.areEqual(
             [SELECT IsSandbox FROM Organization LIMIT 1].IsSandbox,
             reported,
             'the guard should report what the org says'
