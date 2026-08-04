@@ -1,0 +1,22 @@
+# Salesforce CLI
+.sf/
+.sfdx/
+.localdevserver/
+deploy-options.json
+
+# Code Analyzer output
+code-analyzer-results.*
+sfca-*.log
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+npm-debug.log*
